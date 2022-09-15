@@ -24,7 +24,13 @@ import (
 )
 
 func main() {
-	if err := ebiten.RunGame(breakem.NewGame()); err != nil {
+	game, err := breakem.NewGame()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
