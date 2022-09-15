@@ -37,4 +37,6 @@ const (
 	BallWidth    = 5
 	BallHeight   = BallWidth
 	BallMaxSpeed = 10
+
+	AudioSampleRate float64 = 48000.0
 )

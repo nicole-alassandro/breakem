@@ -23,15 +23,9 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
-
-func init() {
-	ebiten.SetWindowSize(GameWidth, GameHeight)
-	ebiten.SetWindowTitle("Break'em")
-
-	rand.Seed(time.Now().UnixNano())
-}
 
 type Brick struct {
 	Rect   image.Rectangle
@@ -54,9 +48,21 @@ type Game struct {
 	Paddle Paddle
 	Ball   Ball
 	Bricks []Brick
+
+	Audio struct {
+		Context  *audio.Context
+		Tone     Tone
+		NextTone int
+		Stopper  <-chan time.Time
+	}
 }
 
-func NewGame() *Game {
+func NewGame() (*Game, error) {
+	ebiten.SetWindowSize(GameWidth, GameHeight)
+	ebiten.SetWindowTitle("Break'em")
+
+	rand.Seed(time.Now().UnixNano())
+
 	game := &Game{
 		Lives: 5,
 		Score: 0,
@@ -69,6 +75,8 @@ func NewGame() *Game {
 		Ball:   NewBall(),
 		Bricks: make([]Brick, 0, 128),
 	}
+
+	game.Audio.Context = audio.NewContext(int(AudioSampleRate))
 
 	{
 		pos := image.Rectangle{
@@ -89,7 +97,7 @@ func NewGame() *Game {
 		}
 	}
 
-	return game
+	return game, nil
 }
 
 func NewBall() Ball {
@@ -108,6 +116,26 @@ func NewBall() Ball {
 func (g *Game) Update() error {
 	if g.Lives == 0 || len(g.Bricks) == 0 {
 		return nil
+	}
+
+	if g.Audio.Stopper != nil {
+		select {
+		case <-g.Audio.Stopper:
+			g.Audio.Tone.Stop()
+			g.Audio.Stopper = nil
+		default:
+			break
+		}
+	}
+
+	if g.Audio.NextTone != 0 {
+		stopper := g.Audio.Tone.Play(g.Audio.NextTone)
+
+		if stopper != nil {
+			g.Audio.Stopper = stopper
+		}
+
+		g.Audio.NextTone = 0
 	}
 
 	// Allow for mouse controls, currently only when button held
@@ -159,23 +187,31 @@ func (g *Game) Update() error {
 	if diff := g.Ball.Rect.Max.X - RightWall; diff > 0 {
 		g.Ball.Rect = g.Ball.Rect.Sub(image.Point{diff, 0})
 		g.Ball.Vel.X *= -1
+
+		g.Audio.NextTone = rand.Intn(2)
 	}
 
 	// Clamp ball to top wall boundary
 	if diff := LeftWall - g.Ball.Rect.Min.X; diff > 0 {
 		g.Ball.Rect = g.Ball.Rect.Add(image.Point{diff, 0})
 		g.Ball.Vel.X *= -1
+
+		g.Audio.NextTone = rand.Intn(1) + 1
 	}
 
 	// Clamp ball to top wall boundary
 	if diff := TopWall - g.Ball.Rect.Min.Y; diff > 0 {
 		g.Ball.Rect = g.Ball.Rect.Add(image.Point{0, diff})
 		g.Ball.Vel.Y *= -1
+
+		g.Audio.NextTone = rand.Intn(1) + 1
 	}
 
 	// Ball intersection with paddle
 	if diff := g.Ball.Rect.Intersect(g.Paddle.Rect); !diff.Empty() {
 		size := diff.Size()
+
+		g.Audio.NextTone = rand.Intn(2) + 1
 
 		// Colliding on top
 		if size.X > size.Y {
@@ -221,6 +257,8 @@ func (g *Game) Update() error {
 
 	remainingBricks := make([]Brick, 0, len(g.Bricks))
 
+	brickCollide := false
+
 	// Ball intersection with bricks
 	for _, brick := range g.Bricks {
 		diff := g.Ball.Rect.Intersect(brick.Rect)
@@ -229,6 +267,8 @@ func (g *Game) Update() error {
 			remainingBricks = append(remainingBricks, brick)
 			continue
 		}
+
+		brickCollide = true
 
 		g.Score += brick.Points
 
@@ -273,7 +313,11 @@ func (g *Game) Update() error {
 		}
 	}
 
-	g.Bricks = remainingBricks
+	if brickCollide {
+		g.Audio.NextTone = rand.Intn(3) + 1
+
+		g.Bricks = remainingBricks
+	}
 
 	g.Ball.Vel.X = Clamp(g.Ball.Vel.X, -BallMaxSpeed, BallMaxSpeed)
 	g.Ball.Vel.Y = Clamp(g.Ball.Vel.Y, -BallMaxSpeed, BallMaxSpeed)
