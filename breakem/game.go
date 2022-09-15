@@ -13,12 +13,11 @@
 // You should have received a copy of the GNU General Public License along
 // with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package breakem
 
 import (
 	"image"
 	"image/color"
-	"log"
 	"math/rand"
 	"strconv"
 	"time"
@@ -27,29 +26,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-const (
-	GameWidth  = 500
-	GameHeight = 500
+func init() {
+	ebiten.SetWindowSize(GameWidth, GameHeight)
+	ebiten.SetWindowTitle("Break'em")
 
-	WallSize = 25
-
-	LeftWall  = WallSize
-	RightWall = GameWidth - WallSize
-	TopWall   = WallSize
-
-	BrickWidth  = WallSize * 2
-	BrickHeight = WallSize
-
-	PaddleWidth    = WallSize * 4
-	PaddleHeight   = WallSize / 2
-	PaddleSpeed    = 5
-	PaddleMaxSpeed = 10
-	PaddleDecel    = 2
-
-	BallWidth    = 5
-	BallHeight   = BallWidth
-	BallMaxSpeed = 10
-)
+	rand.Seed(time.Now().UnixNano())
+}
 
 type Brick struct {
 	Rect   image.Rectangle
@@ -74,14 +56,40 @@ type Game struct {
 	Bricks []Brick
 }
 
-func Clamp(value, min, max int) int {
-	if value < min {
-		return min
-	} else if value > max {
-		return max
+func NewGame() *Game {
+	game := &Game{
+		Lives: 5,
+		Score: 0,
+		Paddle: Paddle{
+			Rect: image.Rectangle{
+				Min: image.Point{WallSize, GameHeight - PaddleHeight},
+				Max: image.Point{WallSize + PaddleWidth, GameHeight},
+			},
+		},
+		Ball:   NewBall(),
+		Bricks: make([]Brick, 0, 128),
 	}
 
-	return value
+	{
+		pos := image.Rectangle{
+			image.Point{WallSize, WallSize * 4},
+			image.Point{WallSize + BrickWidth, (WallSize * 4) + BrickHeight},
+		}
+
+		for i := 0; i < 9; i += 1 {
+			game.Bricks = append(
+				game.Bricks,
+				Brick{
+					Rect:   pos,
+					Points: uint8(i),
+				},
+			)
+
+			pos = pos.Add(image.Point{BrickWidth, 0})
+		}
+	}
+
+	return game
 }
 
 func NewBall() Ball {
@@ -347,47 +355,4 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) Layout(int, int) (int, int) {
 	return GameWidth, GameHeight
-}
-
-func main() {
-	ebiten.SetWindowSize(GameWidth, GameHeight)
-	ebiten.SetWindowTitle("Break'em")
-
-	rand.Seed(time.Now().UnixNano())
-
-	game := Game{
-		Lives: 5,
-		Score: 0,
-		Paddle: Paddle{
-			Rect: image.Rectangle{
-				Min: image.Point{WallSize, GameHeight - PaddleHeight},
-				Max: image.Point{WallSize + PaddleWidth, GameHeight},
-			},
-		},
-		Ball:   NewBall(),
-		Bricks: make([]Brick, 0, 128),
-	}
-
-	{
-		pos := image.Rectangle{
-			image.Point{WallSize, WallSize * 4},
-			image.Point{WallSize + BrickWidth, (WallSize * 4) + BrickHeight},
-		}
-
-		for i := 0; i < 9; i += 1 {
-			game.Bricks = append(
-				game.Bricks,
-				Brick{
-					Rect:   pos,
-					Points: uint8(i),
-				},
-			)
-
-			pos = pos.Add(image.Point{BrickWidth, 0})
-		}
-	}
-
-	if err := ebiten.RunGame(&game); err != nil {
-		log.Fatal(err)
-	}
 }
